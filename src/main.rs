@@ -6,6 +6,11 @@ extern crate tokio_service;
 use std::io;
 use std::str;
 use tokio_core::io::{Codec, EasyBuf};
+use tokio_proto::pipeline::ServerProto;
+use tokio_core::io::{Io, Framed};
+use tokio_service::Service;
+use futures::{future, Future, BoxFuture};
+use tokio_proto::TcpServer;
 
 pub struct LineCodec;
 
@@ -34,6 +39,34 @@ impl Codec for LineCodec {
     }
 }
 
+pub struct LineProto;
+
+impl<T: Io+ 'static> ServerProto<T> for LineProto{
+    type Request = String;
+    type Response = String;
+    type Transport = Framed<T, LineCodec>;
+    type BindTransport = Result<Self::Transport, io::Error>;
+    fn bind_transport(&self, io : T)->Self::BindTransport {
+        Ok(io.framed(LineCodec))
+    }    
+}
+
+pub struct Echo;
+
+impl Service for Echo {
+    type Request = String;
+    type Response = String;
+    type Error = io::Error;
+    type Future = BoxFuture<Self::Response, Self::Error>;
+
+    fn call(&self, request : Self::Request) -> Self::Future {
+        future::ok(request).boxed() 
+    }
+}
+
 fn main() {
-    println!("Hello, world!");
+    let address = "0.0.0.0:12345".parse().unwrap();
+    let server = TcpServer::new(LineProto, address);
+    server.serve(||Ok(Echo));
+    println!("Running server on 0.0.0.0:12345");
 }
